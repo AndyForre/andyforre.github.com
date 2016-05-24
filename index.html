@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>Andyforre.GitHub.com by AndyForre</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">Andyforre.GitHub.com</h1>
+      <h2 class="project-tagline">Assignment - machine learning</h2>
+    </section>
+
+    <section class="main-content">
+      <h3>
+<a id="1-data-import-and-selection-of-predictors" class="anchor" href="#1-data-import-and-selection-of-predictors" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>1. Data import and selection of predictors</h3>
+
+<p>The first part of this report describes selection of predictor variables for use during model construction. Reducing the number of predictor variables is an important step in order to remove random noise in the dataset. Several different strategies for reducing number of features exists. Below follows an explanation of the strategy used in this assignment.
+The training dataset for the assignment was obtained from the following url: <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv</a>. Data was downloaded and imported into R studio using the following code:</p>
+
+<pre><code> url1&lt;- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+ download.file(url1,destfile="./trainset.csv")
+ training = read.csv("trainset.csv", header=T, na.strings = c("NA","", " ","#DIV/0!") )
+ url2&lt;- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv "
+ download.file(url2,destfile="./validationset.csv")
+ testing = read.csv("validationset.csv",header=T, na.strings = c("NA","", " ","#DIV/0!") )
+</code></pre>
+
+<p>The trainingdata is a matrix comprising 19622 observations of 160 variables. The first step to select important predictor variables was to remove predictors that did not contain any values, i.e. the columns containing the NA values. The following code was used to remove predictors containing more than one NA value: </p>
+
+<pre><code>RemovedNATrain &lt;-which(colSums(is.na(training))&gt;1)
+training1 &lt;-training[,-c(RemovedNATrain)]
+dim(training1)
+[1] 19622    60
+</code></pre>
+
+<p>A total of 100 predictors were removed. The new data matrix comprised 19622 observations of 60 variables. Next step in predictor selection involved manual inspection of the predictors. The first seven predictors contained annotation information, hence likely not related to the predicted outcome. These were removed using the following code:</p>
+
+<pre><code>training2 &lt;- subset( training1, select = -c( X : num_window ))
+</code></pre>
+
+<p>The new data matrix comprised 19622 observations of 53 variables. Next step involved identification of near zero variance predictors, since these would most certainly not be useful covariates:</p>
+
+<pre><code>library(caret)
+TestNearZero &lt;- nearZeroVar(training2[sapply(training2,is.numeric)],saveMetrics = TRUE)
+nzv(training2, freqCut = 95/5, uniqueCut = 10, saveMetrics = FALSE, names = FALSE)
+integer(0)
+</code></pre>
+
+<p>No samples were removed, all samples had enough variability. Next step was to remove highly correlated numerical features. This were used by first generating a correlation matrix and then use the findCorrelation function within the caret package to remove highly correlated predictors:</p>
+
+<pre><code>CorMat &lt;-abs(cor(training2[sapply(training2, is.numeric)]))
+r = findCorrelation(CorMat, cutoff = .90, verbose = TRUE)
+training3 = training2[,-r]
+</code></pre>
+
+<p>The new data matrix comprised 19622 observations of 46 variables. This was the last step in the predictor selection process. The 46 predictor variables were used as input into the model. </p>
+
+<h3>
+<a id="2-construction-and-optimization-of-prediction-model" class="anchor" href="#2-construction-and-optimization-of-prediction-model" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>2. Construction and optimization of prediction model</h3>
+
+<p>The second part of this report describes construction of the predictive model. In order to achieve accurate predictions of unknown samples, it is important to tune and optimize parameters on a selected model. It is important that all such optimization steps are performed only on samples in training data in order not to risk overfitting when generalizing to new samples. In order to tune our model and to estimate model performance, we split the trainingdata into two fractions: a training fraction (75% of samples) containing the samples used to train the model and to estimate the tuning parameters, and a test set (25% of samples) to evaluate the ability of our model to generalize to unseen samples.</p>
+
+<pre><code>set.seed(2) 
+train &lt;-createDataPartition(y=training3$classe,p=0.75,list=FALSE)
+trainset&lt;-training3[train,]
+testset&lt;-training3[-train,]
+dim(trainset)
+dim(testset)
+[1] 14718    46
+[1] 4904   46
+</code></pre>
+
+<p>Due to personal preferences, a Random Forest (RF) model was first fitted to the samples in the trainingset. The only available tuning parameter was mtry, the number of variables randomly sampled as candidates at each split. </p>
+
+<pre><code>library(randomForest)
+set.seed(2)
+ctrl = trainControl(method = "cv",number=3, allowParallel=T)
+rf.caret.model = train(classe~., data=trainset, method="rf",trControl=ctrl, tuneGrid=expand.grid(.mtry=1:7),verbose=FALSE)
+rf.caret.model
+
+ Random Forest 
+
+  14718 samples
+    45 predictor
+     5 classes: 'A', 'B', 'C', 'D', 'E' 
+
+No pre-processing
+Resampling: Cross-Validated (3 fold) 
+Summary of sample sizes: 9812, 9812, 9812 
+Resampling results across tuning parameters:
+
+   mtry  Accuracy   Kappa      Accuracy SD   Kappa SD   
+  1     0.9816551  0.9767857  0.0006114961  0.000771878
+  2     0.9878380  0.9846135  0.0019797258  0.002505088
+  3     0.9896046  0.9868497  0.0013366161  0.001691749
+  4     0.9900122  0.9873657  0.0015388982  0.001946648
+  5     0.9913032  0.9889991  0.0013874560  0.001754146
+  6     0.9914391  0.9891708  0.0008153282  0.001029852
+  7     0.9908955  0.9884833  0.0013571806  0.001716210
+
+Accuracy was used to select the optimal model using  the largest value.
+The final value used for the model was mtry = 6.
+</code></pre>
+
+<p>Due to limitations in time, a 3-fold cross-validation procedure was first used on samples in trainingset to determine the mtry parameter. The number of mtry to evaluate was set to all integers between one and the square root of the number of predictors (√46 = 7). The best performing value of mtry was determined based on highest accuracy. This step could be repeated if the performance on test samples was not sufficient.</p>
+
+<h3>
+<a id="3-results--prediction-of-samples-in-test-set" class="anchor" href="#3-results--prediction-of-samples-in-test-set" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>3.) Results – Prediction of samples in test set</h3>
+
+<p>Samples in the testset set were predicted using the tuned model.</p>
+
+<pre><code>    pred1 = predict(rf.caret.model, newdata=testset)
+    confusionMatrix(pred1, testset$classe) 
+    Accuracy : 0.9953
+                        Class: A Class: B Class: C Class: D Class: E
+    Sensitivity            1.0000   0.9905   0.9930   0.9913   0.9989
+    Specificity            0.9977   0.9985   0.9985   0.9998   0.9995
+    Pos Pred Value         0.9943   0.9937   0.9930   0.9987   0.9978
+    Neg Pred Value         1.0000   0.9977   0.9985   0.9983   0.9998
+    Prevalence             0.2845   0.1935   0.1743   0.1639   0.1837
+    Detection Rate         0.2845   0.1917   0.1731   0.1625   0.1835
+    Detection Prevalence   0.2861   0.1929   0.1743   0.1627   0.1839
+    Balanced Accuracy      0.9989   0.9945   0.9958   0.9955   0.9992
+</code></pre>
+
+<p>For prediction of samples in the left out test set, the model reached an impressive accuracy of 99.5%. This means that we do not need to optimize model or try other models. Since compounds in left out test set was not used during model construction or optimization, the accuracy is a valid estimate of the out of sample accuracy. </p>
+
+<h3>
+<a id="4-results--prediction-of-samples-in-independent-validationset" class="anchor" href="#4-results--prediction-of-samples-in-independent-validationset" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>4.) Results – Prediction of samples in independent validationset</h3>
+
+<p>Samples in the independent test set were predicted with the same model:</p>
+
+<pre><code>    Finaltest&lt;-testing[,names(training3[,-46])]
+    dim(Finaltest)
+    pred2 = predict(rf.caret.model, newdata=Finaltest)
+    Answer: B A B A A E D B A A B C B A E E A B B B
+    Levels: A B C D E
+</code></pre>
+
+      <footer class="site-footer">
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the <a href="https://github.com/jasonlong/cayman-theme">Cayman theme</a> by <a href="https://twitter.com/jasonlong">Jason Long</a>.</span>
+      </footer>
+
+    </section>
+
+  
+  </body>
+</html>
